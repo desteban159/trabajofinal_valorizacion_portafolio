@@ -1,0 +1,52 @@
+import pandas as pd
+import openpyxl
+from google.colab import files
+
+print("Por favor, sube tus archivos: 'Portafolio de Bonos Soberanos.xlsx' y 'Renta Fija 02.11.26.xls'")
+uploaded = files.upload()
+
+# 1. Definir nombres de archivo exactos
+archivo_portafolio = 'Portafolio de Bonos Soberanos.xlsx'
+archivo_sbs_nuevo = 'Renta Fija 02.11.26.xls'
+archivo_salida = 'Portafolio de Bonos Soberanos_Actualizado_02.11.2026.xlsx'
+
+print("\nLeyendo el vector de precios SBS y el portafolio actual...")
+
+# 2. Leer la tabla HTML del archivo exportado de la SBS
+df_sbs = pd.read_html(archivo_sbs_nuevo)[0]
+df_sbs['Nemónico'] = df_sbs['Nemónico'].astype(str).str.strip()
+
+# 3. Leer la hoja de valorización indicando que la cabecera está en la fila 1 (header=1)
+df_val_original = pd.read_excel(archivo_portafolio, sheet_name='Valorización', header=1)
+df_val_original = df_val_original.dropna(subset=['Nemonico'])
+
+# 4. Actualizar el 'Valor SBS' cruzando con el nuevo dataframe de la SBS
+precios_sbs_dict = dict(zip(df_sbs['Nemónico'], df_sbs['P. Limpio (%)']))
+df_val_original['Valor SBS'] = df_val_original['Nemonico'].map(precios_sbs_dict)
+
+# 5. Recalcular Monto SBS y Resultado
+df_val_original['Monto SBS'] = (df_val_original['Valor SBS'] / 100.0) * (df_val_original['Monto de Compra'] / (df_val_original['Valor Compra'] / 100.0))
+df_val_original['Resultado'] = df_val_original['Monto SBS'] - df_val_original['Monto de Compra']
+
+print("\n--- VALORIZACIÓN ACTUALIZADA AL 02.11.2026 ---")
+print(df_val_original[['Nemonico', 'Valor Compra', 'Valor SBS', 'Cantidad', 'Resultado']])
+
+# 6. Guardar el resultado en un nuevo archivo Excel y descargarlo automáticamente
+with pd.ExcelWriter(archivo_salida, engine='openpyxl') as writer:
+    df_port = pd.read_excel(archivo_portafolio, sheet_name='Portafolio')
+    df_port.to_excel(writer, sheet_name='Portafolio', index=False)
+    
+    df_val_original.to_excel(writer, sheet_name='Valorización', index=False)
+    
+    try:
+        df_rf = pd.read_excel(archivo_portafolio, sheet_name='Renta Fija 27.10.26')
+        df_rf.to_excel(writer, sheet_name='Renta Fija 27.10.26', index=False)
+    except:
+        pass
+        
+    df_sbs.to_excel(writer, sheet_name='Renta Fija 02.11.26', index=False)
+
+print(f"\n¡Archivo generado con éxito: {archivo_salida}!")
+
+# Descargar automáticamente el archivo actualizado a tu PC
+files.download(archivo_salida)

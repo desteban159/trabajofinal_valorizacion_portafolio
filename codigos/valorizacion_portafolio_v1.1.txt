@@ -1,0 +1,60 @@
+import pandas as pd
+import openpyxl
+
+# 1. Definir rutas de archivos
+archivo_portafolio = 'Portafolio de Bonos Soberanos.xlsx'
+archivo_sbs_nuevo = 'Renta Fija 02.11.26.xls'
+archivo_salida = 'Portafolio de Bonos Soberanos_Actualizado_02.11.2026.xlsx'
+
+print("Leyendo el vector de precios SBS y el portafolio actual...")
+
+# 2. Leer la tabla HTML del archivo exportado de la SBS
+df_sbs = pd.read_html(archivo_sbs_nuevo)[0]
+
+# Asegurar limpieza en la columna de nemónicos
+df_sbs['Nemónico'] = df_sbs['Nemónico'].astype(str).str.strip()
+
+# 3. Leer la hoja de valorización del portafolio existente
+df_val_original = pd.read_excel(archivo_portafolio, sheet_name='Valorización')
+
+# Filtrar filas válidas de bonos en la tabla de valorización
+# (Asumiendo que las columnas principales son Nemonico, ISIN, Valor Compra, Cantidad, Monto de Compra)
+# Limpiamos filas vacías
+df_val_original = df_val_original.dropna(subset=['Nemonico'])
+
+# 4. Actualizar el 'Valor SBS' cruzando con el nuevo dataframe de la SBS
+# Creamos un diccionario rápido de Nemónico -> P. Limpio (%)
+precios_sbs_dict = dict(zip(df_sbs['Nemónico'], df_sbs['P. Limpio (%)']))
+
+# Actualizamos la columna Valor SBS buscando el nemónico en el diccionario
+df_val_original['Valor SBS'] = df_val_original['Nemonico'].map(precios_sbs_dict)
+
+# 5. Recalcular Monto SBS y Resultado
+# Monto SBS = (Valor SBS / 100) * (Cantidad * Valor Nominal o base calculada)
+# O basándonos en la fórmula original de tu portafolio:
+df_val_original['Monto SBS'] = (df_val_original['Valor SBS'] / 100.0) * (df_val_original['Monto de Compra'] / (df_val_original['Valor Compra'] / 100.0))
+df_val_original['Resultado'] = df_val_original['Monto SBS'] - df_val_original['Monto de Compra']
+
+print("\n--- VALORIZACIÓN ACTUALIZADA AL 02.11.2026 ---")
+print(df_val_original[['Nemonico', 'Valor Compra', 'Valor SBS', 'Cantidad', 'Resultado']])
+
+# 6. Guardar el resultado en un nuevo archivo Excel manteniendo las otras hojas
+with pd.ExcelWriter(archivo_salida, engine='openpyxl') as writer:
+    # Copiar hoja Portafolio original
+    df_port = pd.read_excel(archivo_portafolio, sheet_name='Portafolio')
+    df_port.to_excel(writer, sheet_name='Portafolio', index=False)
+    
+    # Escribir la nueva hoja de Valorización actualizada
+    df_val_original.to_excel(writer, sheet_name='Valorización', index=False)
+    
+    # Copiar historial anterior de renta fija si existe
+    try:
+        df_rf = pd.read_excel(archivo_portafolio, sheet_name='Renta Fija 27.10.26')
+        df_rf.to_excel(writer, sheet_name='Renta Fija 27.10.26', index=False)
+    except:
+        pass
+        
+    # Agregar también el nuevo vector SBS como hoja de respaldo
+    df_sbs.to_excel(writer, sheet_name='Renta Fija 02.11.26', index=False)
+
+print(f"\n¡Archivo generado con éxito: {archivo_salida}!")
